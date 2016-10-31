@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.joelguilarte.simple.grpc.home.catalog";
+option java_outer_classname = "HomeCatalogProto";
+option objc_class_prefix = "HCP";
+
+package catalog;
+
+service HomeCatalog {
+  rpc GetHome (Point) returns (Home) {}
+
+  rpc ListHomes (Rectangle) returns (stream Home) {}
+}
+
+message Point {
+  int32 latitude = 1;
+  int32 longitude = 2;
+}
+
+message Rectangle {
+  // One corner of the rectangle.
+  Point lo = 1;
+
+  // The other corner of the rectangle.
+  Point hi = 2;
+}
+
+message Home {
+    string address = 1;
+    Point location = 2;
+}
