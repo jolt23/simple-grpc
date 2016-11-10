@@ -4,25 +4,16 @@ import com.google.common.base.Stopwatch;
 import com.joelguilarte.simple.grpc.home.catalog.Home;
 import com.joelguilarte.simple.grpc.home.catalog.HomeCatalogGrpc;
 import com.joelguilarte.simple.grpc.home.catalog.Point;
-import com.netflix.appinfo.ApplicationInfoManager;
 import com.netflix.appinfo.EurekaInstanceConfig;
-import com.netflix.appinfo.InstanceInfo;
 import com.netflix.appinfo.MyDataCenterInstanceConfig;
-import com.netflix.appinfo.providers.EurekaConfigBasedInstanceInfoProvider;
-import com.netflix.appinfo.providers.MyDataCenterInstanceConfigProvider;
-import com.netflix.discovery.DefaultEurekaClientConfig;
-import com.netflix.discovery.DiscoveryClient;
-import com.netflix.discovery.EurekaClient;
-import com.netflix.discovery.EurekaClientConfig;
 import io.grpc.CallOptions;
 import io.grpc.ClientCall;
 import io.grpc.ManagedChannel;
 import io.grpc.StatusRuntimeException;
-import io.grpc.internal.DnsNameResolverProvider;
+import io.grpc.internal.EurekaNameResolverProvider;
 import io.grpc.netty.NettyChannelBuilder;
 import io.grpc.stub.ClientCalls;
 import io.grpc.util.RoundRobinLoadBalancerFactory;
-import sun.jvm.hotspot.oops.Instance;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,34 +28,13 @@ public class HomeServiceEurekaClient {
     private final ManagedChannel channel;
     private final HomeCatalogGrpc.HomeCatalogBlockingStub blockingStub;
 
-    private static ApplicationInfoManager applicationInfoManager;
-    private static EurekaClient eurekaClient;
+    public HomeServiceEurekaClient(EurekaInstanceConfig eurekaInstanceConfig, String target) {
 
-    private static synchronized ApplicationInfoManager initializeApplicationInfoManager(EurekaInstanceConfig instanceConfig) {
+        System.out.println("Creating new Channel for host: " + target);
 
-        if (applicationInfoManager == null) {
-            InstanceInfo instanceInfo = new EurekaConfigBasedInstanceInfoProvider(instanceConfig).get();
-            applicationInfoManager = new ApplicationInfoManager(instanceConfig, instanceInfo);
-        }
-
-        return applicationInfoManager;
-    }
-
-    private static synchronized EurekaClient initializeEurekaClient(ApplicationInfoManager applicationInfoManager, EurekaClientConfig clientConfig) {
-
-        if (eurekaClient == null) {
-            eurekaClient = new DiscoveryClient(applicationInfoManager, clientConfig);
-        }
-
-        return eurekaClient;
-    }
-
-    public HomeServiceEurekaClient(String host, int port) {
-
-        System.out.println("Creating new Channel for host: " + host + ":" + port );
-
-        channel = NettyChannelBuilder.forAddress(host, port)
+        channel = NettyChannelBuilder.forTarget(target)
                 .usePlaintext(true)
+                .nameResolverFactory(new EurekaNameResolverProvider(eurekaInstanceConfig))
                 .loadBalancerFactory(RoundRobinLoadBalancerFactory.getInstance()) //Improved Performance dramatically
                 .build();
 
@@ -119,28 +89,12 @@ public class HomeServiceEurekaClient {
 
     public static void main(String[] args) throws InterruptedException {
 
-        ApplicationInfoManager applicationInfoManager = initializeApplicationInfoManager(new MyDataCenterInstanceConfig());
-        EurekaClient eurekaClient1 = initializeEurekaClient(applicationInfoManager, new DefaultEurekaClientConfig());
-
+        MyDataCenterInstanceConfig instanceConfig = new MyDataCenterInstanceConfig();
         String vipAddress = "homeservice.local";
 
-        InstanceInfo nextServerInfo = null;
-
-        try {
-            nextServerInfo = eurekaClient.getNextServerFromEureka(vipAddress, false);
-        } catch (Exception e) {
-            System.err.println("Cannot get an instance of example service to talk to from eureka");
-            System.exit(-1);
-        }
-
-        System.out.println("Found an instance of example service to talk to from eureka: "
-                + nextServerInfo.getVIPAddress() + ":" + nextServerInfo.getPort());
-
-        HomeServiceEurekaClient client = new HomeServiceEurekaClient(nextServerInfo.getHostName(), nextServerInfo.getPort());
+        HomeServiceEurekaClient client = new HomeServiceEurekaClient(instanceConfig, vipAddress);
 
         client.channelWarmUp();
         client.runBenchmark();
-
-        eurekaClient.shutdown();
     }
 }
