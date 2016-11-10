@@ -4,15 +4,18 @@ import com.google.common.base.Stopwatch;
 import com.joelguilarte.simple.grpc.home.catalog.Home;
 import com.joelguilarte.simple.grpc.home.catalog.HomeCatalogGrpc;
 import com.joelguilarte.simple.grpc.home.catalog.Point;
-import io.grpc.ManagedChannel;
-import io.grpc.StatusRuntimeException;
+import io.grpc.*;
+import io.grpc.internal.ManagedChannelImpl;
 import io.grpc.netty.NettyChannelBuilder;
+import io.grpc.stub.ClientCalls;
 import io.grpc.util.RoundRobinLoadBalancerFactory;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Created by joel on 10/31/16.
@@ -26,7 +29,7 @@ public class HomeServiceClient {
 
         channel = NettyChannelBuilder.forAddress(host, port)
                 .usePlaintext(true)
-                .loadBalancerFactory(RoundRobinLoadBalancerFactory.getInstance()) //Improved Performance dramatically
+                .loadBalancerFactory(RoundRobinLoadBalancerFactory.getInstance())
                 .build();
 
         blockingStub = HomeCatalogGrpc.newBlockingStub(channel);
@@ -39,45 +42,39 @@ public class HomeServiceClient {
         }
     }
 
-    public void runBenchmark(ExecutorService executor, Point request) {
+    public void runBenchmark(Point request) {
 
-        for (int x = 0; x < 100; x++) {
-            final int index = x;
+        try {
+            Stopwatch stopwatch = Stopwatch.createUnstarted();
 
-            Future<Home> task = executor.submit(() -> {
-                Home response;
+            stopwatch.start();
+            blockingStub.getHome(request);
+            stopwatch.stop();
 
-                try {
-                    Stopwatch stopwatch = Stopwatch.createUnstarted();
-
-                    stopwatch.start();
-                    response = blockingStub.getHome(request);
-                    stopwatch.stop();
-
-                    System.out.println("Finished " + index + " RPC call in: "
-                            + stopwatch.elapsed(TimeUnit.MILLISECONDS) + "ms");
-                } catch (StatusRuntimeException sre) {
-                    System.err.println("RPC Failed: " + sre.getStatus());
-                    return null;
-                }
-
-                return response;
-            });
+            System.out.println("Finished RPC call in: "
+                    + stopwatch.elapsed(TimeUnit.MILLISECONDS) + "ms");
+        } catch (StatusRuntimeException sre) {
+            System.err.println("RPC Failed: " + sre.getStatus());
         }
+    }
+
+    public void channelWarmUp() {
+
+        ClientCall<Point, Home> call = channel.newCall(HomeCatalogGrpc.METHOD_GET_HOME, CallOptions.DEFAULT);
+        ClientCalls.blockingUnaryCall(call, null);
     }
 
     public static void main(String[] args) throws InterruptedException {
 
         HomeServiceClient client = new HomeServiceClient("localhost", 50051);
-        ExecutorService executor = Executors.newFixedThreadPool(20);
         Point request = Point.newBuilder().setLatitude(20).setLongitude(-80).build();
+
+        client.channelWarmUp();
 
         Stopwatch benchmarkTime = Stopwatch.createStarted();
         try {
-            client.runBenchmark(executor, request);
+            client.runBenchmark(request);
         } finally {
-            executor.shutdown();
-            executor.awaitTermination(2, TimeUnit.SECONDS);
             benchmarkTime.stop();
             System.out.println("Finished Benchmark " + benchmarkTime.elapsed(TimeUnit.MILLISECONDS) + "ms");
 
