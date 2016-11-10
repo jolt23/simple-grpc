@@ -50,6 +50,8 @@ public class HomeServiceEurekaClient {
 
     public void runBenchmark() throws InterruptedException {
 
+        System.out.println("Started Benchmark");
+
         ExecutorService executor = Executors.newFixedThreadPool(20);
         Point request = Point.newBuilder().setLatitude(20).setLongitude(-80).build();
 
@@ -82,6 +84,8 @@ public class HomeServiceEurekaClient {
     }
 
     public void channelWarmUp() {
+
+        System.out.println("Started warmup.");
 
         ClientCall<Point, Home> call = channel.newCall(HomeCatalogGrpc.METHOD_GET_HOME, CallOptions.DEFAULT);
         ClientCalls.blockingUnaryCall(call, null);
